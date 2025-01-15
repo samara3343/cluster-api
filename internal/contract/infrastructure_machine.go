@@ -27,14 +27,14 @@ import (
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 )
 
-// InfrastructureMachineContract encodes information about the Machine API contract for InfrastructureMachine objects
+// InfrastructureMachineContract encodes information about the Cluster API contract for InfrastructureMachine objects
 // like DockerMachines, AWS Machines, etc.
 type InfrastructureMachineContract struct{}
 
 var infrastructureMachine *InfrastructureMachineContract
 var onceInfrastructureMachine sync.Once
 
-// InfrastructureMachine provide access to the information about the Machine API contract for InfrastructureMachine objects.
+// InfrastructureMachine provide access to the information about the Cluster API contract for InfrastructureMachine objects.
 func InfrastructureMachine() *InfrastructureMachineContract {
 	onceInfrastructureMachine.Do(func() {
 		infrastructureMachine = &InfrastructureMachineContract{}
@@ -49,7 +49,14 @@ func (m *InfrastructureMachineContract) Ready() *Bool {
 	}
 }
 
+// ReadyConditionType returns the type of the ready condition.
+func (m *InfrastructureMachineContract) ReadyConditionType() string {
+	return "Ready"
+}
+
 // FailureReason provides access to the status.failureReason field in an InfrastructureMachine object. Note that this field is optional.
+//
+// Deprecated: This function is deprecated and is going to be removed. Please see https://github.com/kubernetes-sigs/cluster-api/blob/main/docs/proposals/20240916-improve-status-in-CAPI-resources.md for more details.
 func (m *InfrastructureMachineContract) FailureReason() *String {
 	return &String{
 		path: []string{"status", "failureReason"},
@@ -57,6 +64,8 @@ func (m *InfrastructureMachineContract) FailureReason() *String {
 }
 
 // FailureMessage provides access to the status.failureMessage field in an InfrastructureMachine object. Note that this field is optional.
+//
+// Deprecated: This function is deprecated and is going to be removed. Please see https://github.com/kubernetes-sigs/cluster-api/blob/main/docs/proposals/20240916-improve-status-in-CAPI-resources.md for more details.
 func (m *InfrastructureMachineContract) FailureMessage() *String {
 	return &String{
 		path: []string{"status", "failureMessage"},
@@ -101,7 +110,7 @@ func (m *MachineAddresses) Get(obj *unstructured.Unstructured) (*[]clusterv1.Mac
 		return nil, errors.Wrapf(err, "failed to get %s from object", "."+strings.Join(m.path, "."))
 	}
 	if !ok {
-		return nil, errors.Wrapf(errNotFound, "path %s", "."+strings.Join(m.path, "."))
+		return nil, errors.Wrapf(ErrFieldNotFound, "path %s", "."+strings.Join(m.path, "."))
 	}
 
 	addresses := make([]clusterv1.MachineAddress, len(slice))
