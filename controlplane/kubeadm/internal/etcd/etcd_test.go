@@ -49,12 +49,12 @@ func TestEtcdMembers_WithErrors(t *testing.T) {
 		ErrorResponse:        errors.New("something went wrong"),
 	}
 
-	client, err := newEtcdClient(ctx, fakeEtcdClient)
-	g.Expect(err).NotTo(HaveOccurred())
+	client, err := newEtcdClient(ctx, fakeEtcdClient, DefaultCallTimeout)
+	g.Expect(err).ToNot(HaveOccurred())
 
 	members, err := client.Members(ctx)
 	g.Expect(err).To(HaveOccurred())
-	g.Expect(len(members)).To(Equal(0))
+	g.Expect(members).To(BeEmpty())
 
 	err = client.MoveLeader(ctx, 1)
 	g.Expect(err).To(HaveOccurred())
@@ -74,33 +74,22 @@ func TestEtcdMembers_WithSuccess(t *testing.T) {
 				{ID: 1234, Name: "foo", PeerURLs: []string{"https://1.2.3.4:2000"}},
 			},
 		},
-		MoveLeaderResponse: &clientv3.MoveLeaderResponse{},
-		MemberUpdateResponse: &clientv3.MemberUpdateResponse{
-			Header: &etcdserverpb.ResponseHeader{},
-			Members: []*etcdserverpb.Member{
-				{ID: 1234, Name: "foo", PeerURLs: []string{"https://1.2.3.4:2000", "https://4.5.6.7:2000"}},
-			},
-		},
+		MoveLeaderResponse:   &clientv3.MoveLeaderResponse{},
 		MemberRemoveResponse: &clientv3.MemberRemoveResponse{},
 		AlarmResponse:        &clientv3.AlarmResponse{},
 		StatusResponse:       &clientv3.StatusResponse{},
 	}
 
-	client, err := newEtcdClient(ctx, fakeEtcdClient)
-	g.Expect(err).NotTo(HaveOccurred())
+	client, err := newEtcdClient(ctx, fakeEtcdClient, DefaultCallTimeout)
+	g.Expect(err).ToNot(HaveOccurred())
 
 	members, err := client.Members(ctx)
-	g.Expect(err).NotTo(HaveOccurred())
-	g.Expect(len(members)).To(Equal(1))
+	g.Expect(err).ToNot(HaveOccurred())
+	g.Expect(members).To(HaveLen(1))
 
 	err = client.MoveLeader(ctx, 1)
-	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(err).ToNot(HaveOccurred())
 
 	err = client.RemoveMember(ctx, 1234)
-	g.Expect(err).NotTo(HaveOccurred())
-
-	updatedMembers, err := client.UpdateMemberPeerURLs(ctx, 1234, []string{"https://4.5.6.7:2000"})
-	g.Expect(err).NotTo(HaveOccurred())
-	g.Expect(len(updatedMembers[0].PeerURLs)).To(Equal(2))
-	g.Expect(updatedMembers[0].PeerURLs).To(Equal([]string{"https://1.2.3.4:2000", "https://4.5.6.7:2000"}))
+	g.Expect(err).ToNot(HaveOccurred())
 }

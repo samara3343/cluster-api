@@ -177,12 +177,12 @@ func (s *semaphore) setMetadata(cluster *clusterv1.Cluster) {
 		Namespace: cluster.Namespace,
 		Name:      configMapName(cluster.Name),
 		Labels: map[string]string{
-			clusterv1.ClusterLabelName: cluster.Name,
+			clusterv1.ClusterNameLabel: cluster.Name,
 		},
 		OwnerReferences: []metav1.OwnerReference{
 			{
-				APIVersion: cluster.APIVersion,
-				Kind:       cluster.Kind,
+				APIVersion: clusterv1.GroupVersion.String(),
+				Kind:       "Cluster",
 				Name:       cluster.Name,
 				UID:        cluster.UID,
 			},
