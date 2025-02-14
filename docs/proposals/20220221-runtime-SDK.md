@@ -27,35 +27,40 @@ superseded-by:
 
 ## Table of Contents
 
-  * [Glossary](#glossary)
-  * [Summary](#summary)
-  * [Motivation](#motivation)
-    * [Goals](#goals)
-    * [Non-Goals](#non-goals)
-    * [Future Work](#future-work)
-  * [Proposal](#proposal)
-    * [User Stories](#user-stories)
-    * [Implementation Details/Notes/Constraints](#implementation-detailsnotesconstraints)
-      * [Cluster API Runtime Hooks vs Kubernetes admission webhooks](#cluster-api-runtime-hooks-vs-kubernetes-admission-webhooks)
-      * [Runtime SDK rules](#runtime-sdk-rules)
-  * [Runtime Extensions developer guide](#runtime-extensions-developer-guide)
-    * [Registering Runtime Extensions](#registering-runtime-extensions)
-  * [Runtime Hooks developer guide (CAPI internals)](#runtime-hooks-developer-guide-capi-internals)
-    * [Runtime hook implementation](#runtime-hook-implementation)
-    * [Discovering Runtime Extensions](#discovering-runtime-extensions)
-    * [Calling Runtime Extensions](#calling-runtime-extensions)
-  * [Security Model](#security-model)
-  * [Risks and Mitigations](#risks-and-mitigations)
-  * [Alternatives](#alternatives)
-  * [Upgrade Strategy](#upgrade-strategy)
-  * [Additional Details](#additional-details)
-    * [Test Plan](#test-plan)
-    * [Graduation Criteria](#graduation-criteria)
-    * [Version Skew Strategy](#version-skew-strategy)
-  * [Annex](#annex)
-    * [Runtime SDK rules](#runtime-sdk-rules-1)
-    * [Discovery hook](#discovery-hook)
-  * [Implementation History](#implementation-history)
+<!-- START doctoc generated TOC please keep comment here to allow auto update -->
+<!-- DON'T EDIT THIS SECTION, INSTEAD RE-RUN doctoc TO UPDATE -->
+
+- [Glossary](#glossary)
+- [Summary](#summary)
+- [Motivation](#motivation)
+  - [Goals](#goals)
+  - [Non-Goals](#non-goals)
+  - [Future Work](#future-work)
+- [Proposal](#proposal)
+  - [User Stories](#user-stories)
+  - [Implementation Details/Notes/Constraints](#implementation-detailsnotesconstraints)
+    - [Cluster API Runtime Hooks vs Kubernetes admission webhooks](#cluster-api-runtime-hooks-vs-kubernetes-admission-webhooks)
+    - [Runtime SDK rules](#runtime-sdk-rules)
+- [Runtime Extensions developer guide](#runtime-extensions-developer-guide)
+  - [Registering Runtime Extensions](#registering-runtime-extensions)
+- [Runtime Hooks developer guide (CAPI internals)](#runtime-hooks-developer-guide-capi-internals)
+  - [Runtime hook implementation](#runtime-hook-implementation)
+  - [Discovering Runtime Extensions](#discovering-runtime-extensions)
+  - [Calling Runtime Extensions](#calling-runtime-extensions)
+- [Security Model](#security-model)
+- [Risks and Mitigations](#risks-and-mitigations)
+- [Alternatives](#alternatives)
+- [Upgrade Strategy](#upgrade-strategy)
+- [Additional Details](#additional-details)
+  - [Test Plan](#test-plan)
+  - [Graduation Criteria](#graduation-criteria)
+  - [Version Skew Strategy](#version-skew-strategy)
+- [Annex](#annex)
+  - [Runtime SDK rules](#runtime-sdk-rules-1)
+  - [Discovery hook](#discovery-hook)
+- [Implementation History](#implementation-history)
+
+<!-- END doctoc generated TOC please keep comment here to allow auto update -->
   
 ## Glossary
 
@@ -310,6 +315,9 @@ spec:
   # NamespaceSelector decides whether to run the webhook on a Cluster based on whether the namespace for that Cluster matches the selector.
   # If not specified, the WebHook runs for all the namespaces.
   namespaceSelector: {}
+  # settings is a map[string]string which is sent with each request to a Runtime Extension. These settings can be used by
+  # to modify the behaviour of a Runtime Extension.
+  settings: {}
 ```
 
 Once the extension is registered the [discovery hook](#discovery-hook) is called and the above CR is updated with the list
@@ -568,10 +576,9 @@ func setupReconcilers(ctx context.Context, mgr ctrl.Manager) {
 		Client:                    mgr.GetClient(),
 		APIReader:                 mgr.GetAPIReader(),
 		RuntimeClient:             runtimeClient,
-		UnstructuredCachingClient: unstructuredCachingClient,
 		WatchFilterValue:          watchFilterValue,
 	}).SetupWithManager(ctx, mgr, concurrency(clusterTopologyConcurrency)); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "ClusterTopology")
+		setupLog.Error(err, "Unable to create controller", "controller", "ClusterTopology")
 		os.Exit(1)
 	}
 	...
