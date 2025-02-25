@@ -72,7 +72,14 @@ func (c *InfrastructureClusterContract) Ready() *Bool {
 	}
 }
 
+// ReadyConditionType returns the type of the ready condition.
+func (c *InfrastructureClusterContract) ReadyConditionType() string {
+	return "Ready"
+}
+
 // FailureReason provides access to the status.failureReason field in an InfrastructureCluster object. Note that this field is optional.
+//
+// Deprecated: This function is deprecated and is going to be removed. Please see https://github.com/kubernetes-sigs/cluster-api/blob/main/docs/proposals/20240916-improve-status-in-CAPI-resources.md for more details.
 func (c *InfrastructureClusterContract) FailureReason() *String {
 	return &String{
 		path: []string{"status", "failureReason"},
@@ -80,6 +87,8 @@ func (c *InfrastructureClusterContract) FailureReason() *String {
 }
 
 // FailureMessage provides access to the status.failureMessage field in an InfrastructureCluster object. Note that this field is optional.
+//
+// Deprecated: This function is deprecated and is going to be removed. Please see https://github.com/kubernetes-sigs/cluster-api/blob/main/docs/proposals/20240916-improve-status-in-CAPI-resources.md for more details.
 func (c *InfrastructureClusterContract) FailureMessage() *String {
 	return &String{
 		path: []string{"status", "failureMessage"},
@@ -137,7 +146,7 @@ func (d *FailureDomains) Get(obj *unstructured.Unstructured) (*clusterv1.Failure
 		return nil, errors.Wrapf(err, "failed to get %s from object", "."+strings.Join(d.path, "."))
 	}
 	if !ok {
-		return nil, errors.Wrapf(errNotFound, "path %s", "."+strings.Join(d.path, "."))
+		return nil, errors.Wrapf(ErrFieldNotFound, "path %s", "."+strings.Join(d.path, "."))
 	}
 
 	domains := make(clusterv1.FailureDomains, len(domainMap))

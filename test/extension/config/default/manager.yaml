@@ -2,7 +2,10 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: manager
+  name: controller-manager
+  namespace: system
+  labels:
+    app: test-extension-manager
 spec:
   selector:
     matchLabels:
@@ -14,10 +17,39 @@ spec:
         app: test-extension-manager
     spec:
       containers:
-      - command:
-        - /manager
-        image: controller:latest
-        name: manager
+        - command:
+            - /manager
+          args:
+            - "--leader-elect"
+            - "--diagnostics-address=${CAPI_DIAGNOSTICS_ADDRESS:=:8443}"
+            - "--insecure-diagnostics=${CAPI_INSECURE_DIAGNOSTICS:=false}"
+            - "--feature-gates=PriorityQueue=${EXP_PRIORITY_QUEUE:=false}"
+          image: controller:latest
+          name: manager
+          ports:
+            - containerPort: 9440
+              name: healthz
+              protocol: TCP
+            - containerPort: 8443
+              name: metrics
+              protocol: TCP
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: healthz
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: healthz
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            privileged: false
+            runAsUser: 65532
+            runAsGroup: 65532
+          terminationMessagePolicy: FallbackToLogsOnError
       terminationGracePeriodSeconds: 10
       serviceAccountName: manager
       tolerations:
@@ -25,3 +57,7 @@ spec:
           key: node-role.kubernetes.io/master
         - effect: NoSchedule
           key: node-role.kubernetes.io/control-plane
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault

@@ -33,7 +33,7 @@ If you want to create a local artifact, follow these instructions:
 
 ### Build artifacts locally
 
-In order to build artifacts for the CAPI core provider, the kubeadm bootstrap provider, the kubeadm control plane provider and the docker infrastructure provider:
+In order to build artifacts for the CAPI core provider, the kubeadm bootstrap provider, the kubeadm control plane provider and the Docker infrastructure provider:
 
 ```bash
 make docker-build REGISTRY=gcr.io/k8s-staging-cluster-api PULL_POLICY=IfNotPresent
@@ -66,7 +66,7 @@ cmd/clusterctl/hack/create-local-repository.py
 ```
 
 The script reads from the source folders for the providers you want to install, builds the providers' assets,
-and places them in a local repository folder located under `$HOME/.cluster-api/dev-repository/`.
+and places them in a local repository folder located under `$XDG_CONFIG_HOME/cluster-api/dev-repository/`.
 Additionally, the command output provides you the `clusterctl init` command with all the necessary flags.
 The output should be similar to:
 
@@ -80,24 +80,39 @@ clusterctl init \
    --control-plane kubeadm:v0.3.8 \
    --infrastructure aws:v0.5.0 \
    --infrastructure docker:v0.3.8 \
-   --config ~/.cluster-api/dev-repository/config.yaml
+   --config $XDG_CONFIG_HOME/cluster-api/dev-repository/config.yaml
 ```
 
-As you might notice, the command is using the `$HOME/.cluster-api/dev-repository/config.yaml` config file,
-containing all the required setting to make clusterctl use the local repository.
+As you might notice, the command is using the `$XDG_CONFIG_HOME/cluster-api/dev-repository/config.yaml` config file,
+containing all the required setting to make clusterctl use the local repository (it fallbacks to `$HOME` if `$XDG_CONFIG_HOME` 
+is not set on your machine).
 
 <aside class="note warning">
 
 <h1>Warnings</h1>
 
-You must pass `--config ~/.cluster-api/dev-repository/config.yaml` to all the clusterctl commands you are running
-during your dev session.
+You must pass `--config ...` to all the clusterctl commands you are running during your dev session.
 
 The above config file changes the location of the [overrides layer] folder thus ensuring
 you dev session isn't hijacked by other local artifacts.
 
-With the only exception of the docker provider, the local repository folder does not contain cluster templates,
-so the `clusterctl generate cluster` command will fail.
+With the exceptions of the Docker provider, the local repository folder does not contain cluster templates,
+so the `clusterctl generate cluster` command will fail if you don't copy a template into the local repository.
+
+</aside>
+
+<aside class="note warning">
+
+<h1>Nightly builds</h1>
+
+if you want to run your tests using a Cluster API nightly build, you can run the hack passing the nightly build folder
+(change the date at the end of the bucket name according to your needs):
+
+```bash
+cmd/clusterctl/hack/create-local-repository.py https://storage.googleapis.com/k8s-staging-cluster-api/components/nightly_main_20240425
+```
+
+Note: this works only with core Cluster API nightly builds. 
 
 </aside>
 
@@ -126,11 +141,11 @@ please note that each `provider_repo` should have its own `clusterctl-settings.j
 ## Create a kind management cluster
 
 [kind] can provide a Kubernetes cluster to be used as a management cluster.
-See [Install and/or configure a kubernetes cluster] for more information.
+See [Install and/or configure a Kubernetes cluster] for more information.
 
 *Before* running clusterctl init, you must ensure all the required images are available in the kind cluster.
 
-This is always the case for images published in some image repository like docker hub or gcr.io, but it can't be
+This is always the case for images published in some image repository like Docker Hub or gcr.io, but it can't be
 the case for images built locally; in this case, you can use `kind load` to move the images built locally. e.g.
 
 ```bash
@@ -148,14 +163,13 @@ script.
 
 Optionally, you may want to check if the components are running properly. The
 exact components are dependent on which providers you have initialized. Below
-is an example output with the docker provider being installed.
+is an example output with the Docker provider being installed.
 
 ```bash
-kubectl get deploy -A | grep  "cap\|cert"
-capd-system
+kubectl get deploy -A | grep "cap\|cert"
 ```
 ```bash
-capd-controller-manager                         1/1     1            1           25m
+capd-system                         capd-controller-manager                         1/1     1            1           25m
 capi-kubeadm-bootstrap-system       capi-kubeadm-bootstrap-controller-manager       1/1     1            1           25m
 capi-kubeadm-control-plane-system   capi-kubeadm-control-plane-controller-manager   1/1     1            1           25m
 capi-system                         capi-controller-manager                         1/1     1            1           25m
@@ -166,7 +180,7 @@ cert-manager                        cert-manager-webhook                        
 
 ## Additional Notes for the Docker Provider
 
-### Select the appropriate kubernetes version
+### Select the appropriate Kubernetes version
 
 When selecting the `--kubernetes-version`, ensure that the `kindest/node`
 image is available.
@@ -205,6 +219,6 @@ sed -i -e "s/server:.*/server: https:\/\/$(docker port capi-quickstart-lb 6443/t
 [kind]: https://kind.sigs.k8s.io/
 [providers repositories]: configuration.md#provider-repositories
 [overrides layer]: configuration.md#overrides-layer
-[Install and/or configure a kubernetes cluster]: ../user/quick-start.md#install-andor-configure-a-kubernetes-cluster
+[Install and/or configure a Kubernetes cluster]: ../user/quick-start.md#install-andor-configure-a-kubernetes-cluster
 [kind-docker-hub]: https://hub.docker.com/r/kindest/node/tags
 [issue 3795]: https://github.com/kubernetes-sigs/cluster-api/issues/3795

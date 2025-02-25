@@ -1,6 +1,6 @@
 # clusterctl Configuration File
 
-The `clusterctl` config file is located at `$HOME/.cluster-api/clusterctl.yaml`.
+The `clusterctl` config file is located at `$XDG_CONFIG_HOME/cluster-api/clusterctl.yaml`.
 It can be used to:
 
 - Customize the list of providers and provider repositories.
@@ -9,7 +9,7 @@ It can be used to:
 
 ## Provider repositories
 
-The `clusterctl` CLI is designed to work with providers implementing the [clusterctl Provider Contract](provider-contract.md).
+The `clusterctl` CLI is designed to work with providers implementing the [clusterctl Provider Contract](../developer/providers/contracts/clusterctl.md).
 
 Each provider is expected to define a provider repository, a well-known place where release assets are published.
 
@@ -39,7 +39,7 @@ providers:
     type: "BootstrapProvider"
 ```
 
-See [provider contract](provider-contract.md) for instructions about how to set up a provider repository.
+See [provider contract](../developer/providers/contracts/clusterctl.md) for instructions about how to set up a provider repository.
 
 **Note**: It is possible to use the `${HOME}` and `${CLUSTERCTL_REPOSITORY_PATH}` environment variables in `url`.
 
@@ -59,6 +59,9 @@ variables in the `clusterctl` config file:
 AWS_B64ENCODED_CREDENTIALS: XXXXXXXX
 ```
 
+The format of keys should always be `UPPERCASE_WITH_UNDERSCORE` for both OS environment variables and in the `clusterctl`
+config file (NOTE: this limitation derives from [Viper](https://github.com/spf13/viper), the library we are using internally to retrieve variables).
+
 In case a variable is defined both in the config file and as an OS environment variable,
 the environment variable takes precedence.
 
@@ -72,7 +75,7 @@ wants to use a different repository, it is possible to use the following configu
 
 ```yaml
 cert-manager:
-  url: "/Users/foo/.cluster-api/dev-repository/cert-manager/latest/cert-manager.yaml"
+  url: "/Users/foo/.config/cluster-api/dev-repository/cert-manager/latest/cert-manager.yaml"
 ```
 
 **Note**: It is possible to use the `${HOME}` and `${CLUSTERCTL_REPOSITORY_PATH}` environment variables in `url`.
@@ -97,7 +100,7 @@ The value string is a possibly signed sequence of decimal numbers, each with opt
 
 If no value is specified, or the format is invalid, the default value of 10 minutes will be used.
 
-Please note that the configuration above will be considered also when doing `clusterctl upgrade plan` or `clusterctl upgrade plan`.
+Please note that the configuration above will be considered also when doing `clusterctl upgrade plan` or `clusterctl upgrade apply`.
 
 ## Migrating to user-managed cert-manager
 
@@ -134,7 +137,7 @@ Overrides only provide file replacements; instead, provider version resolution i
 
 `clusterctl` uses an overrides layer to read in injected provider components,
 cluster templates and metadata. By default, it reads the files from
-`$HOME/.cluster-api/overrides`.
+`$XDG_CONFIG_HOME/cluster-api/overrides`.
 
 The directory structure under the `overrides` directory should follow the
 template:
@@ -262,9 +265,9 @@ images:
 
 To have more verbose logs you can use the `-v` flag when running the `clusterctl` and set the level of the logging verbose with a positive integer number, ie. `-v 3`.
 
-If you do not want to use the flag every time you issue a command you can set the environment variable `CLUSTERCTL_LOG_LEVEL` or set the variable in the `clusterctl` config file located by default at `$HOME/.cluster-api/clusterctl.yaml`.
+If you do not want to use the flag every time you issue a command you can set the environment variable `CLUSTERCTL_LOG_LEVEL` or set the variable in the `clusterctl` config file located by default at `$XDG_CONFIG_HOME/cluster-api/clusterctl.yaml`.
 
 
 ## Skip checking for updates
 
-`clusterctl` automatically checks for new versions every time it is used. If you do not want `clusterctl` to check for new updates you can set the environment variable `CLUSTERCTL_DISABLE_VERSIONCHECK` to `"true"` or set the variable in the `clusterctl` config file located by default at `$HOME/.cluster-api/clusterctl.yaml`.
+`clusterctl` automatically checks for new versions every time it is used. If you do not want `clusterctl` to check for new updates you can set the environment variable `CLUSTERCTL_DISABLE_VERSIONCHECK` to `"true"` or set the variable in the `clusterctl` config file located by default at `$XDG_CONFIG_HOME/cluster-api/clusterctl.yaml`.

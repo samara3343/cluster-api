@@ -23,7 +23,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 )
 
-var _ = Describe("When testing ClusterClass changes [ClusterClass]", func() {
+var _ = Describe("When testing ClusterClass changes [ClusterClass]", Label("ClusterClass"), func() {
 	ClusterClassChangesSpec(ctx, func() ClusterClassChangesSpecInput {
 		return ClusterClassChangesSpecInput{
 			E2EConfig:             e2eConfig,
@@ -36,7 +36,7 @@ var _ = Describe("When testing ClusterClass changes [ClusterClass]", func() {
 			// ControlPlaneTemplate of the ClusterClass after the initial Cluster creation.
 			// The test verifies that these fields are rolled out to the ControlPlane.
 			ModifyControlPlaneFields: map[string]interface{}{
-				"spec.machineTemplate.nodeDrainTimeout": "10s",
+				"spec.kubeadmConfigSpec.verbosity": int64(4),
 			},
 			// ModifyMachineDeploymentBootstrapConfigTemplateFields are the fields which will be set on the
 			// BootstrapConfigTemplate of all MachineDeploymentClasses of the ClusterClass after the initial Cluster creation.
@@ -49,6 +49,29 @@ var _ = Describe("When testing ClusterClass changes [ClusterClass]", func() {
 			// The test verifies that these fields are rolled out to the MachineDeployments.
 			ModifyMachineDeploymentInfrastructureMachineTemplateFields: map[string]interface{}{
 				"spec.template.spec.extraMounts": []interface{}{
+					map[string]interface{}{
+						"containerPath": "/var/run/docker.sock",
+						"hostPath":      "/var/run/docker.sock",
+					},
+					map[string]interface{}{
+						// /tmp cannot be used as containerPath as
+						// it already exists.
+						"containerPath": "/test",
+						"hostPath":      "/tmp",
+					},
+				},
+			},
+			// ModifyMachinePoolBootstrapConfigTemplateFields are the fields which will be set on the
+			// BootstrapConfigTemplate of all MachinePoolClasses of the ClusterClass after the initial Cluster creation.
+			// The test verifies that these fields are rolled out to the MachinePools.
+			ModifyMachinePoolBootstrapConfigTemplateFields: map[string]interface{}{
+				"spec.template.spec.verbosity": int64(4),
+			},
+			// ModifyMachinePoolInfrastructureMachineTemplateFields are the fields which will be set on the
+			// InfrastructureMachinePoolTemplate of all MachinePoolClasses of the ClusterClass after the initial Cluster creation.
+			// The test verifies that these fields are rolled out to the MachinePools.
+			ModifyMachinePoolInfrastructureMachinePoolTemplateFields: map[string]interface{}{
+				"spec.template.spec.template.extraMounts": []interface{}{
 					map[string]interface{}{
 						"containerPath": "/var/run/docker.sock",
 						"hostPath":      "/var/run/docker.sock",

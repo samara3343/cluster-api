@@ -19,9 +19,10 @@ package contract
 import (
 	"sync"
 
-	"github.com/blang/semver"
+	"github.com/blang/semver/v4"
 	"github.com/pkg/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/utils/ptr"
 
 	"sigs.k8s.io/cluster-api/util/version"
 )
@@ -118,6 +119,41 @@ func (c *ControlPlaneContract) UnavailableReplicas() *Int64 {
 	}
 }
 
+// V1Beta2ReadyReplicas provide access to readyReplicas field in a ControlPlane object, if any. Applies to implementations using replicas.
+func (c *ControlPlaneContract) V1Beta2ReadyReplicas() *Int32 {
+	return &Int32{
+		paths: []Path{
+			[]string{"status", "v1beta2", "readyReplicas"},
+			[]string{"status", "readyReplicas"},
+		},
+	}
+}
+
+// V1Beta2AvailableReplicas provide access to the availableReplicas field in a ControlPlane object, if any. Applies to implementations using replicas.
+func (c *ControlPlaneContract) V1Beta2AvailableReplicas() *Int32 {
+	return &Int32{
+		paths: []Path{
+			[]string{"status", "v1beta2", "availableReplicas"},
+			[]string{"status", "availableReplicas"},
+		},
+	}
+}
+
+// V1Beta2UpToDateReplicas provide access to the upToDateReplicas field in a ControlPlane object, if any. Applies to implementations using replicas.
+func (c *ControlPlaneContract) V1Beta2UpToDateReplicas() *Int32 {
+	return &Int32{
+		paths: []Path{
+			[]string{"status", "v1beta2", "upToDateReplicas"},
+			[]string{"status", "upToDateReplicas"},
+		},
+	}
+}
+
+// AvailableConditionType returns the type of the available condition.
+func (c *ControlPlaneContract) AvailableConditionType() string {
+	return "Available"
+}
+
 // Selector provide access to the status.selector field in a ControlPlane object, if any. Applies to implementations using replicas.
 func (c *ControlPlaneContract) Selector() *String {
 	return &String{
@@ -126,6 +162,8 @@ func (c *ControlPlaneContract) Selector() *String {
 }
 
 // FailureReason provides access to the status.failureReason field in an ControlPlane object. Note that this field is optional.
+//
+// Deprecated: This function is deprecated and is going to be removed. Please see https://github.com/kubernetes-sigs/cluster-api/blob/main/docs/proposals/20240916-improve-status-in-CAPI-resources.md for more details.
 func (c *ControlPlaneContract) FailureReason() *String {
 	return &String{
 		path: []string{"status", "failureReason"},
@@ -133,6 +171,8 @@ func (c *ControlPlaneContract) FailureReason() *String {
 }
 
 // FailureMessage provides access to the status.failureMessage field in an ControlPlane object. Note that this field is optional.
+//
+// Deprecated: This function is deprecated and is going to be removed. Please see https://github.com/kubernetes-sigs/cluster-api/blob/main/docs/proposals/20240916-improve-status-in-CAPI-resources.md for more details.
 func (c *ControlPlaneContract) FailureMessage() *String {
 	return &String{
 		path: []string{"status", "failureMessage"},
@@ -156,7 +196,7 @@ func (c *ControlPlaneContract) IsProvisioning(obj *unstructured.Unstructured) (b
 	// assume that the control plane is being created for the first time.
 	statusVersion, err := c.StatusVersion().Get(obj)
 	if err != nil {
-		if errors.Is(err, errNotFound) {
+		if errors.Is(err, ErrFieldNotFound) {
 			return true, nil
 		}
 		return false, errors.Wrap(err, "failed to get control plane status version")
@@ -182,7 +222,7 @@ func (c *ControlPlaneContract) IsUpgrading(obj *unstructured.Unstructured) (bool
 	}
 	statusVersion, err := c.StatusVersion().Get(obj)
 	if err != nil {
-		if errors.Is(err, errNotFound) { // status version is not yet set
+		if errors.Is(err, ErrFieldNotFound) { // status version is not yet set
 			// If the status.version is not yet present in the object, it implies the
 			// first machine of the control plane is provisioning. We can reasonably assume
 			// that the control plane is not upgrading at this stage.
@@ -206,6 +246,7 @@ func (c *ControlPlaneContract) IsUpgrading(obj *unstructured.Unstructured) (bool
 // - spec.replicas != status.replicas.
 // - spec.replicas != status.updatedReplicas.
 // - spec.replicas != status.readyReplicas.
+// - status.unavailableReplicas > 0.
 func (c *ControlPlaneContract) IsScaling(obj *unstructured.Unstructured) (bool, error) {
 	desiredReplicas, err := c.Replicas().Get(obj)
 	if err != nil {
@@ -214,7 +255,7 @@ func (c *ControlPlaneContract) IsScaling(obj *unstructured.Unstructured) (bool, 
 
 	statusReplicas, err := c.StatusReplicas().Get(obj)
 	if err != nil {
-		if errors.Is(err, errNotFound) {
+		if errors.Is(err, ErrFieldNotFound) {
 			// status is probably not yet set on the control plane
 			// if status is missing we can consider the control plane to be scaling
 			// so that we can block any operations that expect control plane to be stable.
@@ -225,7 +266,7 @@ func (c *ControlPlaneContract) IsScaling(obj *unstructured.Unstructured) (bool, 
 
 	updatedReplicas, err := c.UpdatedReplicas().Get(obj)
 	if err != nil {
-		if errors.Is(err, errNotFound) {
+		if errors.Is(err, ErrFieldNotFound) {
 			// If updatedReplicas is not set on the control plane
 			// we should consider the control plane to be scaling so that
 			// we block any operation that expect the control plane to be stable.
@@ -236,7 +277,7 @@ func (c *ControlPlaneContract) IsScaling(obj *unstructured.Unstructured) (bool, 
 
 	readyReplicas, err := c.ReadyReplicas().Get(obj)
 	if err != nil {
-		if errors.Is(err, errNotFound) {
+		if errors.Is(err, ErrFieldNotFound) {
 			// If readyReplicas is not set on the control plane
 			// we should consider the control plane to be scaling so that
 			// we block any operation that expect the control plane to be stable.
@@ -245,9 +286,29 @@ func (c *ControlPlaneContract) IsScaling(obj *unstructured.Unstructured) (bool, 
 		return false, errors.Wrap(err, "failed to get control plane status readyReplicas")
 	}
 
+	unavailableReplicas, err := c.UnavailableReplicas().Get(obj)
+	if err != nil {
+		if !errors.Is(err, ErrFieldNotFound) {
+			return false, errors.Wrap(err, "failed to get control plane status unavailableReplicas")
+		}
+		// If unavailableReplicas is not set on the control plane we assume it is 0.
+		// We have to do this as the following happens after clusterctl move with KCP:
+		// * clusterctl move creates the KCP object without status
+		// * the KCP controller won't patch the field to 0 if it doesn't exist
+		//   * This is because the patchHelper marshals before/after object to JSON to calculate a diff
+		//     and as the unavailableReplicas field is not a pointer, not set and 0 are both rendered as 0.
+		//     If before/after of the field is the same (i.e. 0), there is no diff and thus also no patch to set it to 0.
+		unavailableReplicas = ptr.To[int64](0)
+	}
+
+	// Control plane is still scaling if:
+	// * .spec.replicas, .status.replicas, .status.updatedReplicas,
+	//   .status.readyReplicas are not equal and
+	// * unavailableReplicas > 0
 	if *statusReplicas != *desiredReplicas ||
 		*updatedReplicas != *desiredReplicas ||
-		*readyReplicas != *desiredReplicas {
+		*readyReplicas != *desiredReplicas ||
+		*unavailableReplicas > 0 {
 		return true, nil
 	}
 	return false, nil

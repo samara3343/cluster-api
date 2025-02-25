@@ -26,9 +26,9 @@ A temporary cluster that is used to provision a Target Management cluster.
 ### Bootstrap provider
 
 Refers to a [provider](#provider) that implements a solution for the [bootstrap](#bootstrap) process.
-Bootstrap provider's interaction with Cluster API is based on what is defined in the [Cluster API contract](#contract). 
+Bootstrap provider's interaction with Cluster API is based on what is defined in the [Cluster API contract](#contract).
 
-See [CABPK](#CABPK). 
+See [CABPK](#cabpk).
 
 # C
 ---
@@ -37,7 +37,7 @@ See [CABPK](#CABPK).
 Cluster API Enhancement Proposal - patterned after [KEP](https://git.k8s.io/enhancements/keps/README.md). See [template](https://github.com/kubernetes-sigs/cluster-api/blob/main/docs/proposals/YYYYMMDD-template.md)
 
 ### CAPI
-Core Cluster API
+[Core Cluster API](#core-cluster-api)
 
 ### CAPA
 Cluster API Provider AWS
@@ -60,8 +60,20 @@ Cluster API Google Cloud Provider
 ### CAPH
 Cluster API Provider Hetzner
 
+### CAPHV
+Cluster API Provider Hivelocity
+
+### CAPHW
+Cluster API Provider Huawei
+
 ### CAPIBM
 Cluster API Provider IBM Cloud
+
+### CAPIO
+Cluster API Operator
+
+### CAPL
+Cluster API Provider Akamai (Linode)
 
 ### CAPM3
 Cluster API Provider Metal3
@@ -72,17 +84,23 @@ Cluster API Provider Nested
 ### CAPX
 Cluster API Provider Nutanix
 
+### CAPKK
+Cluster API Provider KubeKey
+
 ### CAPK
 Cluster API Provider Kubevirt
 
 ### CAPO
 Cluster API Provider OpenStack
 
-## CAPOSC
+### CAPOSC
 Cluster API Provider Outscale
 
 ### CAPOCI
 Cluster API Provider Oracle Cloud Infrastructure (OCI)
+
+### CAPT
+Cluster API Provider Tinkerbell
 
 ### CAPV
 Cluster API Provider vSphere
@@ -95,6 +113,15 @@ Cluster API Provider VMware Cloud Director
 
 ### CAPZ
 Cluster API Provider Azure
+
+### CAIPAMIC
+Cluster API IPAM Provider In Cluster
+
+### CAIPAMX
+Cluster API IPAM Provider Nutanix
+
+### CAREX
+Cluster API Runtime Extensions Provider Nutanix
 
 ### Cloud provider
 
@@ -117,11 +144,17 @@ Or __Cluster API project__
 
 The Cluster API sub-project of the SIG-cluster-lifecycle. It is also used to refer to the software components, APIs, and community that produce them.
 
-See [core provider](#core-provider)
+See [Core Cluster API](#core-cluster-api), [CAPI](#capi)
 
 ### Cluster API Runtime
 
 The Cluster API execution model, a set of controllers cooperating in managing the Kubernetes cluster lifecycle.
+
+### Cluster Infrastructure
+
+or __Kubernetes Cluster Infrastructure__
+
+Defines the **infrastructure that supports a Kubernetes cluster**, like e.g. VPC, security groups, load balancers, etc. Please note that in the context of managed Kubernetes some of those components are going to be provided by the corresponding abstraction for a specific Cloud provider (EKS, OKE, AKS etc), and thus Cluster API should not take care of managing a subset or all those components.
 
 ### Contract
 
@@ -139,18 +172,32 @@ The set of Kubernetes services that form the basis of a cluster. See also [https
 
 ### Control plane provider
 
-Refers to a [provider](#provider) that implements a solution for the management of a Kubernetes [control plane][#control-plane].
+Refers to a [provider](#provider) that implements a solution for the management of a Kubernetes [control plane](#control-plane).
 Control plane provider's interaction with Cluster API is based on what is defined in the [Cluster API contract](#contract).
 
-See [KCP](#KCP).
+See [KCP](#kcp).
+
+### Core Cluster API
+
+With "core" Cluster API we refer to the common set of API and controllers that are required to run
+any Cluster API provider.
+
+Please note that in the Cluster API code base, side by side of "core" Cluster API components there
+is also a limited number of in-tree providers: [CABPK](#cabpk), [KCP](#kcp), [CAPD](#capd).
+
+See [Cluster API](#cluster-api), [CAPI](#capi).
 
 ### Core provider
 
-Refers to a [provider](#provider) that implements Cluster API core controllers; if you 
-consider that the first project that must be deployed in a management Cluster is Cluster API itself, it should be clear why
-the Cluster API project is also referred to as the core provider.
+Refers to a [provider](#provider) that implements Cluster API [core controllers](#core-controllers)
 
-See [CAPI](#cluster-api).
+See [Cluster API](#cluster-api), [CAPI](#capi).
+
+### Core controllers
+
+The set of controllers in [Core Cluster API](#core-cluster-api).
+
+See [Cluster API](#cluster-api), [CAPI](#capi).
 
 # D
 ---
@@ -158,7 +205,7 @@ See [CAPI](#cluster-api).
 ### Default implementation
 
 A feature implementation offered as part of the Cluster API project and maintained by the CAPI core team; For example
-[KCP](#KCP) is a default implementation for a [control plane provider](#control-plane-provider).
+[KCP](#kcp) is a default implementation for a [control plane provider](#control-plane-provider).
 
 # E
 ---
@@ -169,16 +216,14 @@ A feature implementation offered as part of the Cluster API project and maintain
 
 ### External patch extension
 
-A [runtime extension] that implements a [topology mutation hook]
-
-See [Runtime Extension](#runtime-extension), [topology mutation hook](#topology-mutation-hook)
+A [runtime extension](#runtime-extension) that implements a [topology mutation hook](#topology-mutation-hook).
 
 # H
 ---
 
 ### Horizontal Scaling
 
-The ability to add more machines based on policy and well defined metrics. For example, add a machine to a cluster when CPU load average > (X) for a period of time (Y).
+The ability to add more machines based on policy and well-defined metrics. For example, add a machine to a cluster when CPU load average > (X) for a period of time (Y).
 
 ### Host
 
@@ -189,19 +234,26 @@ see [Server](#server)
 
 ### Infrastructure provider
 
-Refers to a [provider](#provider) that implements provisioning of infrastructure/computational resources required by 
+Refers to a [provider](#provider) that implements provisioning of infrastructure/computational resources required by
 the Cluster or by Machines (e.g. VMs, networking, etc.).
 Infrastructure provider's interaction with Cluster API is based on what is defined in the [Cluster API contract](#contract).
 
 Clouds infrastructure providers include AWS, Azure, or Google; while VMware, MAAS, or metal3.io can be defined as bare metal providers.
 When there is more than one way to obtain resources from the same infrastructure provider (e.g. EC2 vs. EKS in AWS) each way is referred to as a variant.
 
-See e.g. [CAPA][#CAPA], [CAPC][#CAPC], [CAPD][#CAPD], [CAPG][#CAPG], [CAPH][#CAPH], [CAPIBM][#CAPIBM], [CAPN][#CAPN],
-[CAPX][#CAPX], [CAPK][#CAPK], [CAPO][#CAPO], [CAPOCI][#CAPOCI], [CAPV][#CAPV], [CAPVC][#CAPVC], [CAPVCD][#CAPVCD], [CAPZ][#CAPZ]
+For a complete list of providers see [Provider Implementations](providers.md).
 
-### Inline patch 
+### Inline patch
 
 A [patch](#patch) defined inline in a [ClusterClass](#clusterclass). An alternative to an [external patch](#external-patch).
+
+### In-place mutable fields
+
+Fields which changes would only impact Kubernetes objects or/and controller behaviour
+but they won't mutate in any way provider infrastructure nor the software running on it. In-place mutable fields
+are propagated in place by CAPI controllers to avoid the more elaborated mechanics of a replace rollout.
+They include metadata, MinReadySeconds, NodeDrainTimeout, NodeVolumeDetachTimeout and NodeDeletionTimeout but are
+not limited to be expanded in the future.
 
 ### Instance
 
@@ -209,7 +261,7 @@ see [Server](#server)
 
 ### Immutability
 
-A resource that does not mutate.  In kubernetes we often state the instance of a running pod is immutable or does not change once it is run.  In order to make a change, a new pod is run.  In the context of [Cluster API](#cluster-api) we often refer to a running instance of a [Machine](#machine) as being immutable, from a [Cluster API](#cluster-api) perspective.
+A resource that does not mutate.  In Kubernetes we often state the instance of a running pod is immutable or does not change once it is run.  In order to make a change, a new pod is run.  In the context of [Cluster API](#cluster-api) we often refer to a running instance of a [Machine](#machine) as being immutable, from a [Cluster API](#cluster-api) perspective.
 
 ### IPAM provider
 
@@ -255,6 +307,14 @@ See also: [Server](#server)
 
 Perform create, scale, upgrade, or destroy operations on the cluster.
 
+### Managed Kubernetes
+
+Managed Kubernetes refers to any Kubernetes cluster provisioning and maintenance abstraction, usually exposed as an API, that is natively available in a Cloud provider. For example: [EKS](https://aws.amazon.com/eks/), [OKE](https://www.oracle.com/cloud/cloud-native/container-engine-kubernetes/), [AKS](https://azure.microsoft.com/en-us/products/kubernetes-service), [GKE](https://cloud.google.com/kubernetes-engine), [IBM Cloud Kubernetes Service](https://www.ibm.com/cloud/kubernetes-service), [DOKS](https://www.digitalocean.com/products/kubernetes), and many more throughout the Kubernetes Cloud Native ecosystem.
+
+### Managed Topology
+
+See [Topology](#topology)
+
 ### Management cluster
 
 The cluster where one or more Infrastructure Providers run, and where resources (e.g. Machines) are stored. Typically referred to when you are provisioning multiple workload clusters.
@@ -267,7 +327,7 @@ one of them corresponding to an infrastructure tenant.
 Please note that up until v1alpha3 this concept had a different meaning, referring to the capability to run multiple
 instances of the same provider, each one with its own credentials; starting from v1alpha4 we are disambiguating the two concepts.
 
-See [Multi-tenancy](../developer/architecture/controllers/multi-tenancy.md) and [Support multiple instances](../developer/architecture/controllers/support-multiple-instances.md).
+See also [Support multiple instances](../developer/core/support-multiple-instances.md).
 
 # N
 ---
@@ -288,7 +348,7 @@ A generically understood combination of a kernel and system-level userspace inte
 # P
 ---
 
-### Patch 
+### Patch
 
 A set of instructions describing modifications to a Kubernetes object. Examples include JSON Patch and JSON Merge Patch.
 
@@ -370,6 +430,7 @@ The infrastructure that backs a [Machine Resource](#machine), typically either a
 ### Topology
 
 A field in the Cluster object spec that allows defining and managing the shape of the Cluster's control plane and worker machines from a single point of control. The Cluster's topology is based on a [ClusterClass](#clusterclass).
+Sometimes it is also referred as a managed topology.
 
 See [ClusterClass](#clusterclass)
 
