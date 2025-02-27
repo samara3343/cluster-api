@@ -22,6 +22,9 @@ if [[ "${TRACE-0}" == "1" ]]; then
     set -o xtrace
 fi
 
+# shellcheck source=./hack/utils.sh
+source "$(dirname "${BASH_SOURCE[0]}")/utils.sh"
+
 # Ensure the go tool exists and is a viable version.
 verify_go_version() {
   if [[ -z "$(command -v go)" ]]; then
@@ -35,7 +38,7 @@ EOF
   local go_version
   IFS=" " read -ra go_version <<< "$(go version)"
   local minimum_go_version
-  minimum_go_version=go1.19
+  minimum_go_version=go1.23
   if [[ "${minimum_go_version}" != $(echo -e "${minimum_go_version}\n${go_version[2]}" | sort -s -t. -k 1,1 -k 2,2n -k 3,3n | head -n1) && "${go_version[2]}" != "devel" ]]; then
     cat <<EOF
 Detected go version: ${go_version[*]}.
@@ -46,7 +49,9 @@ EOF
   fi
 }
 
+
 verify_go_version
+verify_gopath_bin
 
 # Explicitly opt into go modules, even though we're inside a GOPATH directory
 export GO111MODULE=on

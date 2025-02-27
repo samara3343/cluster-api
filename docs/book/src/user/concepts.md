@@ -22,15 +22,15 @@ When there is more than one way to obtain resources from the same Infrastructure
 A component responsible for turning a server into a Kubernetes node as well as for:
 
 1. Generating the cluster certificates, if not otherwise specified
-1. Initializing the control plane, and gating the creation of other nodes until it is complete
-1. Joining control plane and worker nodes to the cluster
+2. Initializing the control plane, and gating the creation of other nodes until it is complete
+3. Joining control plane and worker nodes to the cluster
 
 ## Control plane
 
 The [control plane](https://kubernetes.io/docs/concepts/overview/components/) is a set of components that serve the Kubernetes API and continuously reconcile desired state using [control loops](https://kubernetes.io/docs/concepts/architecture/controller/).
 
 * __Self-provisioned__: A Kubernetes control plane consisting of pods or machines wholly managed by a single Cluster API deployment.
-  e.g kubeadm uses [static pods](https://kubernetes.io/docs/tasks/configure-pod-container/static-pod/) for running components such as [kube-apiserver](https://kubernetes.io/docs/admin/kube-apiserver/), [kube-controller-manager](https://kubernetes.io/docs/admin/kube-controller-manager/) and [kube-scheduler](https://kubernetes.io/docs/admin/kube-scheduler/)
+  e.g kubeadm uses [static pods](https://kubernetes.io/docs/tasks/configure-pod-container/static-pod/) for running components such as [kube-apiserver](https://kubernetes.io/docs/reference/command-line-tools-reference/kube-apiserver/), [kube-controller-manager](https://kubernetes.io/docs/reference/command-line-tools-reference/kube-controller-manager/) and [kube-scheduler](https://kubernetes.io/docs/reference/command-line-tools-reference/kube-scheduler/)
   on control plane machines.
 
 * __Pod-based__ deployments require an external hosting cluster. The control plane components are deployed using standard *Deployment* and *StatefulSet* objects and the API is exposed using a *Service*.
@@ -69,9 +69,9 @@ A MachineSet works similarly to a core Kubernetes [ReplicaSet](https://kubernete
 
 ### MachineHealthCheck
 
-A MachineHealthCheck defines the conditions when a Node should be considered unhealthy.
+A MachineHealthCheck defines the conditions when a Node should be considered missing or unhealthy.
 
-If the Node matches these unhealthy conditions for a given user-configured time, the MachineHealthCheck initiates remediation of the Node. Remediation of Nodes is performed by deleting the corresponding Machine.
+If the Node matches these unhealthy conditions for a given user-configured time, the MachineHealthCheck initiates remediation of the Node. Remediation of Nodes is performed by replacing the corresponding Machine.
 
 MachineHealthChecks will only remediate Nodes if they are owned by a MachineSet. This ensures that the Kubernetes cluster does not lose capacity, since the MachineSet will create a new Machine to replace the failed Machine.
 

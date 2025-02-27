@@ -32,8 +32,8 @@ import (
 )
 
 // rolloutOnDelete implements the logic for the OnDelete MachineDeploymentStrategyType.
-func (r *Reconciler) rolloutOnDelete(ctx context.Context, d *clusterv1.MachineDeployment, msList []*clusterv1.MachineSet) error {
-	newMS, oldMSs, err := r.getAllMachineSetsAndSyncRevision(ctx, d, msList, true)
+func (r *Reconciler) rolloutOnDelete(ctx context.Context, md *clusterv1.MachineDeployment, msList []*clusterv1.MachineSet, templateExists bool) error {
+	newMS, oldMSs, err := r.getAllMachineSetsAndSyncRevision(ctx, md, msList, true, templateExists)
 	if err != nil {
 		return err
 	}
@@ -48,25 +48,25 @@ func (r *Reconciler) rolloutOnDelete(ctx context.Context, d *clusterv1.MachineDe
 	allMSs := append(oldMSs, newMS)
 
 	// Scale up, if we can.
-	if err := r.reconcileNewMachineSetOnDelete(ctx, allMSs, newMS, d); err != nil {
+	if err := r.reconcileNewMachineSetOnDelete(ctx, allMSs, newMS, md); err != nil {
 		return err
 	}
 
-	if err := r.syncDeploymentStatus(allMSs, newMS, d); err != nil {
+	if err := r.syncDeploymentStatus(allMSs, newMS, md); err != nil {
 		return err
 	}
 
 	// Scale down, if we can.
-	if err := r.reconcileOldMachineSetsOnDelete(ctx, oldMSs, allMSs, d); err != nil {
+	if err := r.reconcileOldMachineSetsOnDelete(ctx, oldMSs, allMSs, md); err != nil {
 		return err
 	}
 
-	if err := r.syncDeploymentStatus(allMSs, newMS, d); err != nil {
+	if err := r.syncDeploymentStatus(allMSs, newMS, md); err != nil {
 		return err
 	}
 
-	if mdutil.DeploymentComplete(d, &d.Status) {
-		if err := r.cleanupDeployment(ctx, oldMSs, d); err != nil {
+	if mdutil.DeploymentComplete(md, &md.Status) {
+		if err := r.cleanupDeployment(ctx, oldMSs, md); err != nil {
 			return err
 		}
 	}
@@ -85,7 +85,7 @@ func (r *Reconciler) reconcileOldMachineSetsOnDelete(ctx context.Context, oldMSs
 	totalReplicas := mdutil.GetReplicaCountForMachineSets(allMSs)
 	scaleDownAmount := totalReplicas - *deployment.Spec.Replicas
 	for _, oldMS := range oldMSs {
-		log = log.WithValues("MachineSet", klog.KObj(oldMS))
+		log := log.WithValues("MachineSet", klog.KObj(oldMS))
 		if oldMS.Spec.Replicas == nil || *oldMS.Spec.Replicas <= 0 {
 			log.V(4).Info("fully scaled down")
 			continue
@@ -93,20 +93,20 @@ func (r *Reconciler) reconcileOldMachineSetsOnDelete(ctx context.Context, oldMSs
 		if oldMS.Annotations == nil {
 			oldMS.Annotations = map[string]string{}
 		}
-		if _, ok := oldMS.Annotations[clusterv1.DisableMachineCreate]; !ok {
+		if _, ok := oldMS.Annotations[clusterv1.DisableMachineCreateAnnotation]; !ok {
 			log.V(4).Info("setting annotation on old MachineSet to disable machine creation")
 			patchHelper, err := patch.NewHelper(oldMS, r.Client)
 			if err != nil {
 				return err
 			}
-			oldMS.Annotations[clusterv1.DisableMachineCreate] = "true"
+			oldMS.Annotations[clusterv1.DisableMachineCreateAnnotation] = "true"
 			if err := patchHelper.Patch(ctx, oldMS); err != nil {
 				return err
 			}
 		}
 		selectorMap, err := metav1.LabelSelectorAsMap(&oldMS.Spec.Selector)
 		if err != nil {
-			log.V(4).Error(err, "failed to convert MachineSet %q label selector to a map", oldMS.Name)
+			log.V(4).Info("Failed to convert MachineSet label selector to a map", "err", err)
 			continue
 		}
 		log.V(4).Info("Fetching Machines associated with MachineSet")
@@ -127,7 +127,7 @@ func (r *Reconciler) reconcileOldMachineSetsOnDelete(ctx context.Context, oldMSs
 		}
 		machineSetScaleDownAmountDueToMachineDeletion := *oldMS.Spec.Replicas - updatedReplicaCount
 		if machineSetScaleDownAmountDueToMachineDeletion < 0 {
-			log.V(4).Error(errors.Errorf("unexpected negative scale down amount: %d", machineSetScaleDownAmountDueToMachineDeletion), fmt.Sprintf("Error reconciling MachineSet %s", oldMS.Name))
+			log.V(4).Info(fmt.Sprintf("Error reconciling MachineSet %s", oldMS.Name), "err", errors.Errorf("Unexpected negative scale down amount: %d", machineSetScaleDownAmountDueToMachineDeletion))
 		}
 		scaleDownAmount -= machineSetScaleDownAmountDueToMachineDeletion
 		log.V(4).Info("Adjusting replica count for deleted machines", "oldReplicas", oldMS.Spec.Replicas, "newReplicas", updatedReplicaCount)
@@ -138,7 +138,7 @@ func (r *Reconciler) reconcileOldMachineSetsOnDelete(ctx context.Context, oldMSs
 	}
 	log.V(4).Info("Finished reconcile of Old MachineSets to account for deleted machines. Now analyzing if there's more potential to scale down")
 	for _, oldMS := range oldMSs {
-		log = log.WithValues("MachineSet", klog.KObj(oldMS))
+		log := log.WithValues("MachineSet", klog.KObj(oldMS))
 		if scaleDownAmount <= 0 {
 			break
 		}
@@ -165,22 +165,9 @@ func (r *Reconciler) reconcileOldMachineSetsOnDelete(ctx context.Context, oldMSs
 
 // reconcileNewMachineSetOnDelete handles reconciliation of the latest MachineSet associated with the MachineDeployment in the OnDelete MachineDeploymentStrategyType.
 func (r *Reconciler) reconcileNewMachineSetOnDelete(ctx context.Context, allMSs []*clusterv1.MachineSet, newMS *clusterv1.MachineSet, deployment *clusterv1.MachineDeployment) error {
-	// logic same as reconcile logic for RollingUpdate
-	log := ctrl.LoggerFrom(ctx, "MachineSet", klog.KObj(newMS))
-
-	if newMS.Annotations != nil {
-		if _, ok := newMS.Annotations[clusterv1.DisableMachineCreate]; ok {
-			log.V(4).Info("removing annotation on latest MachineSet to enable machine creation")
-			patchHelper, err := patch.NewHelper(newMS, r.Client)
-			if err != nil {
-				return err
-			}
-			delete(newMS.Annotations, clusterv1.DisableMachineCreate)
-			err = patchHelper.Patch(ctx, newMS)
-			if err != nil {
-				return err
-			}
-		}
+	if err := r.cleanupDisableMachineCreateAnnotation(ctx, newMS); err != nil {
+		return err
 	}
+
 	return r.reconcileNewMachineSet(ctx, allMSs, newMS, deployment)
 }

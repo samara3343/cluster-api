@@ -18,11 +18,11 @@ package config
 
 import (
 	"fmt"
-	"os"
 	"sort"
 	"testing"
 
 	. "github.com/onsi/gomega"
+	"github.com/onsi/gomega/format"
 
 	clusterctlv1 "sigs.k8s.io/cluster-api/cmd/clusterctl/api/v1alpha3"
 	"sigs.k8s.io/cluster-api/cmd/clusterctl/internal/test"
@@ -41,6 +41,10 @@ func Test_providers_List(t *testing.T) {
 	})
 
 	defaultsAndZZZ := append(defaults, NewProvider("zzz", "https://zzz/infrastructure-components.yaml", "InfrastructureProvider"))
+	// AddonProviders are at the end of the list so we want to make sure this InfrastructureProvider is before the AddonProviders.
+	sort.Slice(defaultsAndZZZ, func(i, j int) bool {
+		return defaultsAndZZZ[i].Less(defaultsAndZZZ[j])
+	})
 
 	defaultsWithOverride := append([]Provider{}, defaults...)
 	defaultsWithOverride[0] = NewProvider(defaults[0].Name(), "https://zzz/infrastructure-components.yaml", defaults[0].Type())
@@ -135,18 +139,16 @@ func Test_providers_List(t *testing.T) {
 			wantErr: true,
 		},
 	}
+
+	format.MaxLength = 15000 // This way it doesn't truncate the output on test failure
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			g := NewWithT(t)
 
 			for k, v := range tt.envVars {
-				g.Expect(os.Setenv(k, v)).To(Succeed())
+				t.Setenv(k, v)
 			}
-			defer func() {
-				for k := range tt.envVars {
-					g.Expect(os.Unsetenv(k)).To(Succeed())
-				}
-			}()
 			p := &providersClient{
 				reader: tt.fields.configGetter,
 			}
@@ -156,7 +158,7 @@ func Test_providers_List(t *testing.T) {
 				return
 			}
 
-			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(err).ToNot(HaveOccurred())
 			g.Expect(got).To(Equal(tt.want))
 		})
 	}
@@ -250,7 +252,7 @@ func Test_validateProvider(t *testing.T) {
 			if tt.wantErr {
 				g.Expect(err).To(HaveOccurred())
 			} else {
-				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(err).ToNot(HaveOccurred())
 			}
 		})
 	}
@@ -271,7 +273,7 @@ func Test_providers_Defaults(t *testing.T) {
 
 	for _, d := range defaults {
 		err := validateProvider(d)
-		g.Expect(err).NotTo(HaveOccurred())
+		g.Expect(err).ToNot(HaveOccurred())
 	}
 }
 
@@ -353,7 +355,7 @@ func Test_providers_Get(t *testing.T) {
 				return
 			}
 
-			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(err).ToNot(HaveOccurred())
 			g.Expect(got).To(Equal(tt.want))
 		})
 	}
