@@ -17,44 +17,59 @@ limitations under the License.
 package controllers
 
 import (
+	"context"
+	"fmt"
 	"os"
 	"testing"
 
-	// +kubebuilder:scaffold:imports
-	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/selection"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/cache"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 	"sigs.k8s.io/cluster-api/internal/test/envtest"
 )
 
 var (
-	env *envtest.Environment
-	ctx = ctrl.SetupSignalHandler()
-	// TODO(sbueringer): move under internal/builder (or refactor it in a way that we don't need it anymore).
-	fakeGenericMachineTemplateCRD = &apiextensionsv1.CustomResourceDefinition{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: apiextensionsv1.SchemeGroupVersion.String(),
-			Kind:       "CustomResourceDefinition",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "genericmachinetemplate.generic.io",
-			Labels: map[string]string{
-				"cluster.x-k8s.io/v1beta1": "v1",
-			},
-		},
-		Spec: apiextensionsv1.CustomResourceDefinitionSpec{
-			Group: "generic.io",
-			Names: apiextensionsv1.CustomResourceDefinitionNames{
-				Kind: "GenericMachineTemplate",
-			},
-		},
-	}
+	env                 *envtest.Environment
+	ctx                 = ctrl.SetupSignalHandler()
+	secretCachingClient client.Client
 )
 
 func TestMain(m *testing.M) {
+	setupReconcilers := func(_ context.Context, mgr ctrl.Manager) {
+		var err error
+		secretCachingClient, err = client.New(mgr.GetConfig(), client.Options{
+			HTTPClient: mgr.GetHTTPClient(),
+			Cache: &client.CacheOptions{
+				Reader: mgr.GetCache(),
+			},
+		})
+		if err != nil {
+			panic(fmt.Sprintf("unable to create secretCachingClient: %v", err))
+		}
+	}
+	req, _ := labels.NewRequirement(clusterv1.ClusterNameLabel, selection.Exists, nil)
+	clusterSecretCacheSelector := labels.NewSelector().Add(*req)
 	os.Exit(envtest.Run(ctx, envtest.RunInput{
-		M:        m,
-		SetupEnv: func(e *envtest.Environment) { env = e },
+		M: m,
+		ManagerCacheOptions: cache.Options{
+			ByObject: map[client.Object]cache.ByObject{
+				// Only cache Secrets with the cluster name label.
+				// This is similar to the real world.
+				&corev1.Secret{}: {
+					Label: clusterSecretCacheSelector,
+				},
+			},
+		},
+		ManagerUncachedObjs: []client.Object{
+			&corev1.ConfigMap{},
+			&corev1.Secret{},
+		},
+		SetupEnv:         func(e *envtest.Environment) { env = e },
+		SetupReconcilers: setupReconcilers,
 	}))
 }

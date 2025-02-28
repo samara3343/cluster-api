@@ -17,6 +17,7 @@ limitations under the License.
 package client
 
 import (
+	"context"
 	"os"
 	"testing"
 
@@ -129,17 +130,19 @@ func Test_clusterctlClient_Move(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			g := NewWithT(t)
 
-			err := tt.fields.client.Move(tt.args.options)
+			ctx := context.Background()
+
+			err := tt.fields.client.Move(ctx, tt.args.options)
 			if tt.wantErr {
 				g.Expect(err).To(HaveOccurred())
 				return
 			}
-			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(err).ToNot(HaveOccurred())
 		})
 	}
 }
 
-func Test_clusterctlClient_Backup(t *testing.T) {
+func Test_clusterctlClient_ToDirectory(t *testing.T) {
 	dir, err := os.MkdirTemp("/tmp", "cluster-api")
 	if err != nil {
 		t.Error(err)
@@ -152,7 +155,7 @@ func Test_clusterctlClient_Backup(t *testing.T) {
 	// These tests are checking the Backup scaffolding
 	// The internal library handles the backup logic and tests can be found there
 	type args struct {
-		options BackupOptions
+		options MoveOptions
 	}
 	tests := []struct {
 		name    string
@@ -166,9 +169,9 @@ func Test_clusterctlClient_Backup(t *testing.T) {
 				client: fakeClientForMove(), // core v1.0.0 (v1.0.1 available), infra v2.0.0 (v2.0.1 available)
 			},
 			args: args{
-				options: BackupOptions{
+				options: MoveOptions{
 					FromKubeconfig: Kubeconfig{Path: "kubeconfig", Context: "mgmt-context"},
-					Directory:      dir,
+					ToDirectory:    dir,
 				},
 			},
 			wantErr: false,
@@ -179,9 +182,9 @@ func Test_clusterctlClient_Backup(t *testing.T) {
 				client: fakeClientForMove(), // core v1.0.0 (v1.0.1 available), infra v2.0.0 (v2.0.1 available)
 			},
 			args: args{
-				options: BackupOptions{
+				options: MoveOptions{
 					FromKubeconfig: Kubeconfig{Path: "kubeconfig", Context: "does-not-exist"},
-					Directory:      dir,
+					ToDirectory:    dir,
 				},
 			},
 			wantErr: true,
@@ -192,17 +195,19 @@ func Test_clusterctlClient_Backup(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			g := NewWithT(t)
 
-			err := tt.fields.client.Backup(tt.args.options)
+			ctx := context.Background()
+
+			err := tt.fields.client.Move(ctx, tt.args.options)
 			if tt.wantErr {
 				g.Expect(err).To(HaveOccurred())
 				return
 			}
-			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(err).ToNot(HaveOccurred())
 		})
 	}
 }
 
-func Test_clusterctlClient_Restore(t *testing.T) {
+func Test_clusterctlClient_FromDirectory(t *testing.T) {
 	dir, err := os.MkdirTemp("/tmp", "cluster-api")
 	if err != nil {
 		t.Error(err)
@@ -215,7 +220,7 @@ func Test_clusterctlClient_Restore(t *testing.T) {
 	// These tests are checking the Restore scaffolding
 	// The internal library handles the restore logic and tests can be found there
 	type args struct {
-		options RestoreOptions
+		options MoveOptions
 	}
 	tests := []struct {
 		name    string
@@ -229,9 +234,9 @@ func Test_clusterctlClient_Restore(t *testing.T) {
 				client: fakeClientForMove(), // core v1.0.0 (v1.0.1 available), infra v2.0.0 (v2.0.1 available)
 			},
 			args: args{
-				options: RestoreOptions{
-					ToKubeconfig: Kubeconfig{Path: "kubeconfig", Context: "mgmt-context"},
-					Directory:    dir,
+				options: MoveOptions{
+					ToKubeconfig:  Kubeconfig{Path: "kubeconfig", Context: "mgmt-context"},
+					FromDirectory: dir,
 				},
 			},
 			wantErr: false,
@@ -242,9 +247,9 @@ func Test_clusterctlClient_Restore(t *testing.T) {
 				client: fakeClientForMove(), // core v1.0.0 (v1.0.1 available), infra v2.0.0 (v2.0.1 available)
 			},
 			args: args{
-				options: RestoreOptions{
-					ToKubeconfig: Kubeconfig{Path: "kubeconfig", Context: "does-not-exist"},
-					Directory:    dir,
+				options: MoveOptions{
+					ToKubeconfig:  Kubeconfig{Path: "kubeconfig", Context: "does-not-exist"},
+					FromDirectory: dir,
 				},
 			},
 			wantErr: true,
@@ -255,21 +260,25 @@ func Test_clusterctlClient_Restore(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			g := NewWithT(t)
 
-			err := tt.fields.client.Restore(tt.args.options)
+			ctx := context.Background()
+
+			err := tt.fields.client.Move(ctx, tt.args.options)
 			if tt.wantErr {
 				g.Expect(err).To(HaveOccurred())
 				return
 			}
-			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(err).ToNot(HaveOccurred())
 		})
 	}
 }
 
 func fakeClientForMove() *fakeClient {
+	ctx := context.Background()
+
 	core := config.NewProvider("cluster-api", "https://somewhere.com", clusterctlv1.CoreProviderType)
 	infra := config.NewProvider("infra", "https://somewhere.com", clusterctlv1.InfrastructureProviderType)
 
-	config1 := newFakeConfig().
+	config1 := newFakeConfig(ctx).
 		WithProvider(core).
 		WithProvider(infra)
 
@@ -285,7 +294,7 @@ func fakeClientForMove() *fakeClient {
 		WithProviderInventory(infra.Name(), infra.Type(), "v2.0.0", "infra-system").
 		WithObjs(test.FakeCAPISetupObjects()...)
 
-	client := newFakeClient(config1).
+	client := newFakeClient(ctx, config1).
 		WithCluster(cluster1).
 		WithCluster(cluster2)
 
@@ -298,22 +307,22 @@ type fakeObjectMover struct {
 	fromDirectoryErr error
 }
 
-func (f *fakeObjectMover) Move(_ string, _ cluster.Client, _ bool) error {
+func (f *fakeObjectMover) Move(_ context.Context, _ string, _ cluster.Client, _ bool, _ ...cluster.ResourceMutatorFunc) error {
 	return f.moveErr
 }
 
-func (f *fakeObjectMover) ToDirectory(_ string, _ string) error {
+func (f *fakeObjectMover) ToDirectory(_ context.Context, _ string, _ string) error {
 	return f.toDirectoryErr
 }
 
-func (f *fakeObjectMover) Backup(_ string, _ string) error {
+func (f *fakeObjectMover) Backup(_ context.Context, _ string, _ string) error {
 	return f.toDirectoryErr
 }
 
-func (f *fakeObjectMover) FromDirectory(_ cluster.Client, _ string) error {
+func (f *fakeObjectMover) FromDirectory(_ context.Context, _ cluster.Client, _ string) error {
 	return f.fromDirectoryErr
 }
 
-func (f *fakeObjectMover) Restore(_ cluster.Client, _ string) error {
+func (f *fakeObjectMover) Restore(_ context.Context, _ cluster.Client, _ string) error {
 	return f.fromDirectoryErr
 }

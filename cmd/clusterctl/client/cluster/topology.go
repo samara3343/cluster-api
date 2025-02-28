@@ -22,7 +22,7 @@ import (
 	"fmt"
 	"strings"
 
-	jsonpatch "github.com/evanphx/json-patch"
+	jsonpatch "github.com/evanphx/json-patch/v5"
 	"github.com/pkg/errors"
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
@@ -39,8 +39,10 @@ import (
 
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 	"sigs.k8s.io/cluster-api/cmd/clusterctl/client/cluster/internal/dryrun"
+	"sigs.k8s.io/cluster-api/cmd/clusterctl/internal/scheme"
 	logf "sigs.k8s.io/cluster-api/cmd/clusterctl/log"
 	"sigs.k8s.io/cluster-api/feature"
+	clusterclasscontroller "sigs.k8s.io/cluster-api/internal/controllers/clusterclass"
 	clustertopologycontroller "sigs.k8s.io/cluster-api/internal/controllers/topology/cluster"
 	"sigs.k8s.io/cluster-api/internal/webhooks"
 	"sigs.k8s.io/cluster-api/util/contract"
@@ -53,7 +55,7 @@ const (
 
 // TopologyClient has methods to work with ClusterClass and ManagedTopologies.
 type TopologyClient interface {
-	Plan(in *TopologyPlanInput) (*TopologyPlanOutput, error)
+	Plan(ctx context.Context, in *TopologyPlanInput) (*TopologyPlanOutput, error)
 }
 
 // topologyClient implements TopologyClient.
@@ -104,8 +106,7 @@ type TopologyPlanOutput struct {
 
 // Plan performs a dry run execution of the topology reconciler using the given inputs.
 // It returns a summary of the changes observed during the execution.
-func (t *topologyClient) Plan(in *TopologyPlanInput) (*TopologyPlanOutput, error) {
-	ctx := context.TODO()
+func (t *topologyClient) Plan(ctx context.Context, in *TopologyPlanInput) (*TopologyPlanOutput, error) {
 	log := logf.Log
 
 	// Make sure the inputs are valid.
@@ -119,9 +120,9 @@ func (t *topologyClient) Plan(in *TopologyPlanInput) (*TopologyPlanOutput, error
 	// Example: This client will be used to fetch the underlying ClusterClass when the input
 	// only has a Cluster object.
 	var c client.Client
-	if err := t.proxy.CheckClusterAvailable(); err == nil {
-		if initialized, err := t.inventoryClient.CheckCAPIInstalled(); err == nil && initialized {
-			c, err = t.proxy.NewClient()
+	if err := t.proxy.CheckClusterAvailable(ctx); err == nil {
+		if initialized, err := t.inventoryClient.CheckCAPIInstalled(ctx); err == nil && initialized {
+			c, err = t.proxy.NewClient(ctx)
 			if err != nil {
 				return nil, errors.Wrap(err, "failed to create a client to the cluster")
 			}
@@ -134,19 +135,23 @@ func (t *topologyClient) Plan(in *TopologyPlanInput) (*TopologyPlanOutput, error
 	if err := t.prepareInput(ctx, in, c); err != nil {
 		return nil, errors.Wrap(err, "failed preparing input")
 	}
+
 	// Run defaulting and validation on core CAPI objects - Cluster and ClusterClasses.
 	// This mimics the defaulting and validation webhooks that will run on the objects during a real execution.
 	// Running defaulting and validation on these objects helps to improve the UX of using the plan operation.
 	// This is especially important when working with Clusters and ClusterClasses that use variable and patches.
-	if err := t.runDefaultAndValidationWebhooks(ctx, in, c); err != nil {
+	reconciledClusterClasses, err := t.runDefaultAndValidationWebhooks(ctx, in, c)
+	if err != nil {
 		return nil, errors.Wrap(err, "failed defaulting and validation on input objects")
 	}
 
 	objs := []client.Object{}
 	// Add all the objects from the input to the list used when initializing the dry run client.
-	for _, o := range in.Objs {
+	for _, o := range filterObjects(in.Objs, clusterv1.GroupVersion.WithKind("ClusterClass")) {
 		objs = append(objs, o)
 	}
+	// Note: We have to add the reconciled ClusterClasses, because the Cluster reconciler depends on that.
+	objs = append(objs, reconciledClusterClasses...)
 	// Add mock CRDs of all the provider objects in the input to the list used when initializing the dry run client.
 	// Adding these CRDs makes sure that UpdateReferenceAPIContract calls in the reconciler can work.
 	for _, o := range t.generateCRDs(in.Objs) {
@@ -198,9 +203,8 @@ func (t *topologyClient) Plan(in *TopologyPlanInput) (*TopologyPlanOutput, error
 
 	res.ReconciledCluster = targetCluster
 	reconciler := &clustertopologycontroller.Reconciler{
-		Client:                    dryRunClient,
-		APIReader:                 dryRunClient,
-		UnstructuredCachingClient: dryRunClient,
+		Client:    dryRunClient,
+		APIReader: dryRunClient,
 	}
 	reconciler.SetupForDryRun(&noOpRecorder{})
 	request := reconcile.Request{NamespacedName: *targetCluster}
@@ -261,7 +265,7 @@ func (t *topologyClient) validateInput(in *TopologyPlanInput) error {
 //   - Prepare cluster objects so that the state of the cluster, if modified, correctly represents
 //     the expected changes.
 func (t *topologyClient) prepareInput(ctx context.Context, in *TopologyPlanInput, apiReader client.Reader) error {
-	if err := t.setMissingNamespaces(in.TargetNamespace, in.Objs); err != nil {
+	if err := t.setMissingNamespaces(ctx, in.TargetNamespace, in.Objs); err != nil {
 		return errors.Wrap(err, "failed to set missing namespaces")
 	}
 
@@ -273,12 +277,12 @@ func (t *topologyClient) prepareInput(ctx context.Context, in *TopologyPlanInput
 
 // setMissingNamespaces sets the object to the current namespace on objects
 // that are missing the namespace field.
-func (t *topologyClient) setMissingNamespaces(currentNamespace string, objs []*unstructured.Unstructured) error {
+func (t *topologyClient) setMissingNamespaces(ctx context.Context, currentNamespace string, objs []*unstructured.Unstructured) error {
 	if currentNamespace == "" {
 		// If TargetNamespace is not provided use "default" namespace.
 		currentNamespace = metav1.NamespaceDefault
 		// If a cluster is available use the current namespace as defined in its kubeconfig.
-		if err := t.proxy.CheckClusterAvailable(); err == nil {
+		if err := t.proxy.CheckClusterAvailable(ctx); err == nil {
 			currentNamespace, err = t.proxy.CurrentNamespace()
 			if err != nil {
 				return errors.Wrap(err, "failed to get current namespace")
@@ -361,11 +365,11 @@ func (t *topologyClient) prepareClusters(ctx context.Context, clusters []*unstru
 // ValidateCreate is performed.
 // *Important Note*: We cannot perform defaulting and validation on provider objects as we do not have access to
 // that code.
-func (t *topologyClient) runDefaultAndValidationWebhooks(ctx context.Context, in *TopologyPlanInput, apiReader client.Reader) error {
+func (t *topologyClient) runDefaultAndValidationWebhooks(ctx context.Context, in *TopologyPlanInput, apiReader client.Reader) ([]client.Object, error) {
 	// Enable the ClusterTopology feature gate so that the defaulter and validators do not complain.
 	// Note: We don't need to disable it later because the CLI is short lived.
 	if err := feature.Gates.(featuregate.MutableFeatureGate).Set(fmt.Sprintf("%s=%v", feature.ClusterTopology, true)); err != nil {
-		return errors.Wrapf(err, "failed to enable %s feature gate", feature.ClusterTopology)
+		return nil, errors.Wrapf(err, "failed to enable %s feature gate", feature.ClusterTopology)
 	}
 
 	// From the inputs gather all the objects that are not Clusters or ClusterClasses.
@@ -394,21 +398,31 @@ func (t *topologyClient) runDefaultAndValidationWebhooks(ctx context.Context, in
 		ccWebhook,
 		apiReader,
 	); err != nil {
-		return errors.Wrap(err, "failed to run defaulting and validation on ClusterClasses")
+		return nil, errors.Wrap(err, "failed to run defaulting and validation on ClusterClasses")
 	}
 
-	// From the inputs gather all the objects that are not Clusters.
+	// From the inputs gather all the objects that are not Clusters or ClusterClasses.
 	// These objects will be used when initializing a dryrun client to use in the webhooks.
-	// We want to keep ClusterClasses in the webhook client. This is because validation of
-	// Cluster objects might need access to ClusterClass objects that are in the input.
 	filteredObjs = filterObjects(
 		in.Objs,
 		clusterv1.GroupVersion.WithKind("Cluster"),
+		clusterv1.GroupVersion.WithKind("ClusterClass"),
 	)
+
 	objs = []client.Object{}
 	for _, o := range filteredObjs {
 		objs = append(objs, o)
 	}
+	// Reconcile the ClusterClasses and add the reconciled version of them to the webhook client.
+	// This is required as validation of Cluster objects might need access to ClusterClass objects that are in the input.
+	// Cluster variable defaulting and validation relies on the ClusterClass `.status.variables` which is added
+	// during ClusterClass reconciliation.
+	reconciledClusterClasses, err := t.reconcileClusterClasses(ctx, in.Objs, apiReader)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to reconcile ClusterClasses for defaulting and validating")
+	}
+	objs = append(objs, reconciledClusterClasses...)
+
 	webhookClient = dryrun.NewClient(apiReader, objs)
 
 	// Run defaulting and validation on Clusters.
@@ -421,10 +435,115 @@ func (t *topologyClient) runDefaultAndValidationWebhooks(ctx context.Context, in
 		clusterWebhook,
 		apiReader,
 	); err != nil {
-		return errors.Wrap(err, "failed to run defaulting and validation on Clusters")
+		return nil, errors.Wrap(err, "failed to run defaulting and validation on Clusters")
 	}
 
-	return nil
+	return reconciledClusterClasses, nil
+}
+
+func (t *topologyClient) reconcileClusterClasses(ctx context.Context, inputObjects []*unstructured.Unstructured, apiReader client.Reader) ([]client.Object, error) {
+	reconciliationObjects := []client.Object{}
+	// From the inputs gather all the objects that are not ClusterClasses.
+	// These objects will be used when initializing a dryrun client to use in the reconciler.
+	for _, o := range filterObjects(inputObjects, clusterv1.GroupVersion.WithKind("ClusterClass")) {
+		reconciliationObjects = append(reconciliationObjects, o)
+	}
+	// Add mock CRDs of all the provider objects in the input to the list used when initializing the client.
+	// Adding these CRDs makes sure that UpdateReferenceAPIContract calls in the reconciler can work.
+	for _, o := range t.generateCRDs(inputObjects) {
+		reconciliationObjects = append(reconciliationObjects, o)
+	}
+
+	// Create a list of all ClusterClasses, including those in the dry run input and those in the management Cluster
+	// API Server.
+	allClusterClasses := []client.Object{}
+	ccList := &clusterv1.ClusterClassList{}
+	// If an APIReader is available add the ClusterClasses from the management cluster
+	if apiReader != nil {
+		if err := apiReader.List(ctx, ccList); err != nil {
+			return nil, errors.Wrap(err, "failed to find ClusterClasses to default and validate Clusters")
+		}
+		for i := range ccList.Items {
+			allClusterClasses = append(allClusterClasses, &ccList.Items[i])
+		}
+	}
+
+	// Add ClusterClasses from the input
+	inClusterClasses := getClusterClasses(inputObjects)
+	cc := clusterv1.ClusterClass{}
+	for _, class := range inClusterClasses {
+		if err := scheme.Scheme.Convert(class, &cc, ctx); err != nil {
+			return nil, errors.Wrapf(err, "failed to convert object %s/%s to ClusterClass", class.GetNamespace(), class.GetName())
+		}
+		allClusterClasses = append(allClusterClasses, &cc)
+	}
+
+	// Each ClusterClass should be reconciled in order to ensure variables are correctly added to `status.variables`.
+	// This is required as Clusters are validated based of variable definitions in the ClusterClass `.status.variables`.
+	reconciledClusterClasses := []client.Object{}
+	for _, class := range allClusterClasses {
+		reconciledClusterClass, err := reconcileClusterClass(ctx, apiReader, class, reconciliationObjects)
+		if err != nil {
+			return nil, errors.Wrapf(err, "ClusterClass %s could not be reconciled for dry run", class.GetName())
+		}
+		reconciledClusterClasses = append(reconciledClusterClasses, reconciledClusterClass)
+	}
+
+	// Remove the ClusterClasses from the input objects and replace them with the reconciled version.
+	for i, obj := range inputObjects {
+		if obj.GroupVersionKind() == clusterv1.GroupVersion.WithKind("ClusterClass") {
+			// remove the clusterclass from the list of reconciled clusterclasses if it was not in the input.
+			inputObjects = append(inputObjects[:i], inputObjects[i+1:]...)
+		}
+	}
+	for _, class := range reconciledClusterClasses {
+		obj := &unstructured.Unstructured{}
+		if err := localScheme.Convert(class, obj, nil); err != nil {
+			return nil, errors.Wrapf(err, "failed to convert %s to object", obj.GetKind())
+		}
+		inputObjects = append(inputObjects, obj)
+	}
+
+	// Return a list of successfully reconciled ClusterClasses.
+	return reconciledClusterClasses, nil
+}
+
+func reconcileClusterClass(ctx context.Context, apiReader client.Reader, class client.Object, reconciliationObjects []client.Object) (*unstructured.Unstructured, error) {
+	targetClusterClass := client.ObjectKey{Namespace: class.GetNamespace(), Name: class.GetName()}
+	reconciliationObjects = append(reconciliationObjects, class)
+
+	// Create a reconcilerClient that has access to all of the necessary templates to complete a successful reconcile
+	// of the ClusterClass.
+	reconcilerClient := dryrun.NewClient(apiReader, reconciliationObjects)
+
+	clusterClassReconciler := &clusterclasscontroller.Reconciler{
+		Client: reconcilerClient,
+	}
+
+	// The first only reconciles the paused condition.
+	if _, err := clusterClassReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: targetClusterClass}); err != nil {
+		return nil, errors.Wrap(err, "failed to dry run the ClusterClass controller to reconcile the paused condition")
+	}
+
+	if _, err := clusterClassReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: targetClusterClass}); err != nil {
+		return nil, errors.Wrap(err, "failed to dry run the ClusterClass controller")
+	}
+
+	// Pull the reconciled ClusterClass using the reconcilerClient, and return the version with the updated status.
+	reconciledClusterClass := &clusterv1.ClusterClass{}
+	if err := reconcilerClient.Get(ctx, targetClusterClass, reconciledClusterClass); err != nil {
+		return nil, fmt.Errorf("could not retrieve ClusterClass")
+	}
+
+	obj := &unstructured.Unstructured{}
+	// Converted the defaulted and validated object back into unstructured.
+	// Note: This step also makes sure that modified object is updated into the
+	// original unstructured object.
+	if err := localScheme.Convert(reconciledClusterClass, obj, nil); err != nil {
+		return nil, errors.Wrapf(err, "failed to convert %s to object", obj.GetKind())
+	}
+
+	return obj, nil
 }
 
 func (t *topologyClient) defaultAndValidateObjs(ctx context.Context, objs []*unstructured.Unstructured, o client.Object, defaulter crwebhook.CustomDefaulter, validator crwebhook.CustomValidator, apiReader client.Reader) error {
@@ -452,11 +571,11 @@ func (t *topologyClient) defaultAndValidateObjs(ctx context.Context, objs []*uns
 			}
 		}
 		if oldObject != nil {
-			if err := validator.ValidateUpdate(ctx, oldObject, object); err != nil {
+			if _, err := validator.ValidateUpdate(ctx, oldObject, object); err != nil {
 				return errors.Wrapf(err, "failed validation of %s %s/%s", obj.GroupVersionKind().String(), obj.GetNamespace(), obj.GetName())
 			}
 		} else {
-			if err := validator.ValidateCreate(ctx, object); err != nil {
+			if _, err := validator.ValidateCreate(ctx, object); err != nil {
 				return errors.Wrapf(err, "failed validation of %s %s/%s", obj.GroupVersionKind().String(), obj.GetNamespace(), obj.GetName())
 			}
 		}
@@ -584,7 +703,8 @@ func (t *topologyClient) affectedClusters(ctx context.Context, in *TopologyPlanI
 	// Each of the Cluster that uses the ClusterClass in the input is an affected cluster.
 	for _, cc := range affectedClusterClasses {
 		for i := range clusterList.Items {
-			if clusterList.Items[i].Spec.Topology != nil && clusterList.Items[i].Spec.Topology.Class == cc.Name {
+			cluster := clusterList.Items[i]
+			if cluster.Spec.Topology != nil && cluster.GetClassKey().Name == cc.Name {
 				affectedClusters[client.ObjectKeyFromObject(&clusterList.Items[i])] = true
 			}
 		}
@@ -688,11 +808,22 @@ func clusterClassUsesTemplate(cc *clusterv1.ClusterClass, templateRef *corev1.Ob
 		}
 	}
 
+	for _, mpClass := range cc.Spec.Workers.MachinePools {
+		// Check the bootstrap ref
+		if equalRef(mpClass.Template.Bootstrap.Ref, templateRef) {
+			return true
+		}
+		// Check the infrastructure ref.
+		if equalRef(mpClass.Template.Infrastructure.Ref, templateRef) {
+			return true
+		}
+	}
+
 	return false
 }
 
 func uniqueNamespaces(objs []*unstructured.Unstructured) []string {
-	ns := sets.NewString()
+	ns := sets.Set[string]{}
 	for _, obj := range objs {
 		// Namespace objects do not have metadata.namespace set, but we can add the
 		// name of the obj to the namespace list, as it is another unique namespace.
@@ -707,7 +838,7 @@ func uniqueNamespaces(objs []*unstructured.Unstructured) []string {
 		// objects from different namespaces.
 		ns.Insert(obj.GetNamespace())
 	}
-	return ns.List()
+	return sets.List(ns)
 }
 
 func hasUniqueVersionPerGroupKind(objs []*unstructured.Unstructured) bool {

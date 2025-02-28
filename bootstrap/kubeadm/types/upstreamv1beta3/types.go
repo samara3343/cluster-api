@@ -138,8 +138,7 @@ type ClusterConfiguration struct {
 // ControlPlaneComponent holds settings common to control plane component of the cluster.
 type ControlPlaneComponent struct {
 	// ExtraArgs is an extra set of flags to pass to the control plane component.
-	// TODO: This is temporary and ideally we would like to switch all components to
-	// use ComponentConfig + ConfigMaps.
+	// TODO: This is temporary and ideally we would like to switch all components to use ComponentConfig + ConfigMaps.
 	// +optional
 	ExtraArgs map[string]string `json:"extraArgs,omitempty"`
 
@@ -225,6 +224,13 @@ type NodeRegistrationOptions struct {
 	// IgnorePreflightErrors provides a slice of pre-flight errors to be ignored when the current node is registered.
 	// +optional
 	IgnorePreflightErrors []string `json:"ignorePreflightErrors,omitempty"`
+
+	// ImagePullPolicy specifies the policy for image pulling
+	// during kubeadm "init" and "join" operations. The value of
+	// this field must be one of "Always", "IfNotPresent" or
+	// "Never". Defaults to "IfNotPresent".
+	// +optional
+	ImagePullPolicy string `json:"imagePullPolicy,omitempty"`
 }
 
 // Networking contains elements describing cluster's networking configuration.

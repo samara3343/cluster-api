@@ -29,45 +29,48 @@ superseded-by:
 
 ## Table of Contents
 
-- [Cluster API Add-On Orchestration](#cluster-api-add-on-orchestration)
-  - [Table of Contents](#table-of-contents)
-  - [Glosssary](#glosssary)
-  - [Summary](#summary)
-  - [Motivation](#motivation)
-    - [Goals](#goals)
-    - [Non goals](#non-goals)
-    - [Future work](#future-work)
-  - [Proposal](#proposal)
-    - [User Stories](#user-stories)
-      - [Story 1](#story-1)
-      - [Story 2](#story-2)
-      - [Story 3](#story-3)
-      - [Story 4](#story-4)
-      - [Story 5](#story-5)
-    - [ClusterAddonProvider Functionality](#clusteraddonprovider-functionality)
-    - [ClusterAddonProvider Design](#clusteraddonprovider-design)
-      - [ClusterAddonProvider for Helm](#clusteraddonprovider-for-helm)
-      - [HelmChartProxy](#helmchartproxy)
-      - [HelmReleaseProxy](#helmreleaseproxy)
-      - [Controller Design](#controller-design)
-      - [Defining the list of Cluster add-ons to install](#defining-the-list-of-cluster-add-ons-to-install)
-      - [Installing and lifecycle managing the package manager](#installing-and-lifecycle-managing-the-package-manager)
-      - [Mapping HelmChartProxies to Helm charts](#mapping-helmchartproxies-to-helm-charts)
-      - [Mapping Kubernetes version to add-ons version](#mapping-kubernetes-version-to-add-ons-version)
-      - [Generating package configurations](#generating-package-configurations)
-      - [Maintaining an inventory of add-ons installed in a Cluster](#maintaining-an-inventory-of-add-ons-installed-in-a-cluster)
-      - [Surface Cluster add-ons status](#surface-cluster-add-ons-status)
-      - [Upgrade strategy](#upgrade-strategy)
-      - [Managing dependencies](#managing-dependencies)
-    - [Example: Installing Calico CNI](#example-installing-calico-cni)
-    - [Additional considerations](#additional-considerations)
-      - [HelmChartProxy design](#helmchartproxy-design)
-      - [Provider contracts](#provider-contracts)
-  - [Cluster API enhancements](#cluster-api-enhancements)
-    - [clusterctl](#clusterctl)
-  - [Alternatives](#alternatives)
-    - [Why not ClusterResourceSets?](#why-not-clusterresourcesets)
-    - [Existing package management controllers](#existing-package-management-controllers)
+<!-- START doctoc generated TOC please keep comment here to allow auto update -->
+<!-- DON'T EDIT THIS SECTION, INSTEAD RE-RUN doctoc TO UPDATE -->
+
+- [Glosssary](#glosssary)
+- [Summary](#summary)
+- [Motivation](#motivation)
+  - [Goals](#goals)
+  - [Non goals](#non-goals)
+  - [Future work](#future-work)
+- [Proposal](#proposal)
+  - [User Stories](#user-stories)
+    - [Story 1](#story-1)
+    - [Story 2](#story-2)
+    - [Story 3](#story-3)
+    - [Story 4](#story-4)
+    - [Story 5](#story-5)
+  - [ClusterAddonProvider Functionality](#clusteraddonprovider-functionality)
+  - [ClusterAddonProvider Design](#clusteraddonprovider-design)
+    - [ClusterAddonProvider for Helm](#clusteraddonprovider-for-helm)
+    - [HelmChartProxy](#helmchartproxy)
+    - [HelmReleaseProxy](#helmreleaseproxy)
+    - [Controller Design](#controller-design)
+    - [Defining the list of Cluster add-ons to install](#defining-the-list-of-cluster-add-ons-to-install)
+    - [Installing and lifecycle managing the package manager](#installing-and-lifecycle-managing-the-package-manager)
+    - [Mapping HelmChartProxies to Helm charts](#mapping-helmchartproxies-to-helm-charts)
+    - [Mapping Kubernetes version to add-ons version](#mapping-kubernetes-version-to-add-ons-version)
+    - [Generating package configurations](#generating-package-configurations)
+    - [Maintaining an inventory of add-ons installed in a Cluster](#maintaining-an-inventory-of-add-ons-installed-in-a-cluster)
+    - [Surface Cluster add-ons status](#surface-cluster-add-ons-status)
+    - [Upgrade strategy](#upgrade-strategy)
+    - [Managing dependencies](#managing-dependencies)
+  - [Example: Installing Calico CNI](#example-installing-calico-cni)
+  - [Additional considerations](#additional-considerations)
+    - [HelmChartProxy design](#helmchartproxy-design)
+    - [Provider contracts](#provider-contracts)
+- [Cluster API enhancements](#cluster-api-enhancements)
+  - [clusterctl](#clusterctl)
+- [Alternatives](#alternatives)
+  - [Why not ClusterResourceSets?](#why-not-clusterresourcesets)
+  - [Existing package management controllers](#existing-package-management-controllers)
+
+<!-- END doctoc generated TOC please keep comment here to allow auto update -->
 
 ## Glosssary 
 
@@ -344,7 +347,7 @@ First, the simplest is to let the package manager maintain the list. For example
 
 The solution implemented in the ClusterAddonProvider for Helm is to use HelmReleaseProxy to maintain an inventory. Each HelmReleaseProxy corresponds to a Helm release installed through HelmChartProxy. The controller only orchestrates Helm releases with a corresponding HelmReleaseProxy, ensuring that out of band Helm releases won’t be affected. 
 
-Additionally, each HelmReleaseProxy includes a `clusterv1.ClusterLabelName` and an additional label indicating the HelmChartProxy it corresponds to. This provides a way to query for all Helm releases installed on a Cluster and to query for all Helm releases belonging to a HelmChartProxy.
+Additionally, each HelmReleaseProxy includes a `clusterv1.ClusterNameLabel` and an additional label indicating the HelmChartProxy it corresponds to. This provides a way to query for all Helm releases installed on a Cluster and to query for all Helm releases belonging to a HelmChartProxy.
 
 #### Surface Cluster add-ons status
 

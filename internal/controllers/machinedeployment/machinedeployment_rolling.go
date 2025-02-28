@@ -21,17 +21,18 @@ import (
 	"sort"
 
 	"github.com/pkg/errors"
-	"k8s.io/utils/integer"
+	"k8s.io/klog/v2"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 	"sigs.k8s.io/cluster-api/internal/controllers/machinedeployment/mdutil"
+	"sigs.k8s.io/cluster-api/util/patch"
 )
 
 // rolloutRolling implements the logic for rolling a new MachineSet.
-func (r *Reconciler) rolloutRolling(ctx context.Context, d *clusterv1.MachineDeployment, msList []*clusterv1.MachineSet) error {
-	newMS, oldMSs, err := r.getAllMachineSetsAndSyncRevision(ctx, d, msList, true)
+func (r *Reconciler) rolloutRolling(ctx context.Context, md *clusterv1.MachineDeployment, msList []*clusterv1.MachineSet, templateExists bool) error {
+	newMS, oldMSs, err := r.getAllMachineSetsAndSyncRevision(ctx, md, msList, true, templateExists)
 	if err != nil {
 		return err
 	}
@@ -46,25 +47,25 @@ func (r *Reconciler) rolloutRolling(ctx context.Context, d *clusterv1.MachineDep
 	allMSs := append(oldMSs, newMS)
 
 	// Scale up, if we can.
-	if err := r.reconcileNewMachineSet(ctx, allMSs, newMS, d); err != nil {
+	if err := r.reconcileNewMachineSet(ctx, allMSs, newMS, md); err != nil {
 		return err
 	}
 
-	if err := r.syncDeploymentStatus(allMSs, newMS, d); err != nil {
+	if err := r.syncDeploymentStatus(allMSs, newMS, md); err != nil {
 		return err
 	}
 
 	// Scale down, if we can.
-	if err := r.reconcileOldMachineSets(ctx, allMSs, oldMSs, newMS, d); err != nil {
+	if err := r.reconcileOldMachineSets(ctx, allMSs, oldMSs, newMS, md); err != nil {
 		return err
 	}
 
-	if err := r.syncDeploymentStatus(allMSs, newMS, d); err != nil {
+	if err := r.syncDeploymentStatus(allMSs, newMS, md); err != nil {
 		return err
 	}
 
-	if mdutil.DeploymentComplete(d, &d.Status) {
-		if err := r.cleanupDeployment(ctx, oldMSs, d); err != nil {
+	if mdutil.DeploymentComplete(md, &md.Status) {
+		if err := r.cleanupDeployment(ctx, oldMSs, md); err != nil {
 			return err
 		}
 	}
@@ -73,6 +74,10 @@ func (r *Reconciler) rolloutRolling(ctx context.Context, d *clusterv1.MachineDep
 }
 
 func (r *Reconciler) reconcileNewMachineSet(ctx context.Context, allMSs []*clusterv1.MachineSet, newMS *clusterv1.MachineSet, deployment *clusterv1.MachineDeployment) error {
+	if err := r.cleanupDisableMachineCreateAnnotation(ctx, newMS); err != nil {
+		return err
+	}
+
 	if deployment.Spec.Replicas == nil {
 		return errors.Errorf("spec.replicas for MachineDeployment %v is nil, this is unexpected", client.ObjectKeyFromObject(deployment))
 	}
@@ -91,7 +96,7 @@ func (r *Reconciler) reconcileNewMachineSet(ctx context.Context, allMSs []*clust
 		return r.scaleMachineSet(ctx, newMS, *(deployment.Spec.Replicas), deployment)
 	}
 
-	newReplicasCount, err := mdutil.NewMSNewReplicas(deployment, allMSs, newMS)
+	newReplicasCount, err := mdutil.NewMSNewReplicas(deployment, allMSs, *newMS.Spec.Replicas)
 	if err != nil {
 		return err
 	}
@@ -217,7 +222,7 @@ func (r *Reconciler) cleanupUnhealthyReplicas(ctx context.Context, oldMSs []*clu
 
 		remainingCleanupCount := maxCleanupCount - totalScaledDown
 		unhealthyCount := oldMSReplicas - oldMSAvailableReplicas
-		scaledDownCount := integer.Int32Min(remainingCleanupCount, unhealthyCount)
+		scaledDownCount := min(remainingCleanupCount, unhealthyCount)
 		newReplicasCount := oldMSReplicas - scaledDownCount
 
 		if newReplicasCount > oldMSReplicas {
@@ -278,7 +283,7 @@ func (r *Reconciler) scaleDownOldMachineSetsForRollingUpdate(ctx context.Context
 		}
 
 		// Scale down.
-		scaleDownCount := integer.Int32Min(*(targetMS.Spec.Replicas), totalScaleDownCount-totalScaledDown)
+		scaleDownCount := min(*(targetMS.Spec.Replicas), totalScaleDownCount-totalScaledDown)
 		newReplicasCount := *(targetMS.Spec.Replicas) - scaleDownCount
 		if newReplicasCount > *(targetMS.Spec.Replicas) {
 			return totalScaledDown, errors.Errorf("when scaling down old MachineSet, got invalid request to scale down %v: %d -> %d",
@@ -293,4 +298,26 @@ func (r *Reconciler) scaleDownOldMachineSetsForRollingUpdate(ctx context.Context
 	}
 
 	return totalScaledDown, nil
+}
+
+// cleanupDisableMachineCreateAnnotation will remove the disable machine create annotation from new MachineSets that were created during reconcileOldMachineSetsOnDelete.
+func (r *Reconciler) cleanupDisableMachineCreateAnnotation(ctx context.Context, newMS *clusterv1.MachineSet) error {
+	log := ctrl.LoggerFrom(ctx, "MachineSet", klog.KObj(newMS))
+
+	if newMS.Annotations != nil {
+		if _, ok := newMS.Annotations[clusterv1.DisableMachineCreateAnnotation]; ok {
+			log.V(4).Info("removing annotation on latest MachineSet to enable machine creation")
+			patchHelper, err := patch.NewHelper(newMS, r.Client)
+			if err != nil {
+				return err
+			}
+			delete(newMS.Annotations, clusterv1.DisableMachineCreateAnnotation)
+			err = patchHelper.Patch(ctx, newMS)
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
 }
